@@ -133,11 +133,11 @@ def extract_files(html_content, base_url):
         absolute_url = urljoin(base_url, encoded_href)
         link_text = link.text.strip()
 
-        if any(absolute_url.lower().endswith(tuple(ALLOWED_EXTS)):
+        if any(absolute_url.lower().endswith(tuple(ALLOWED_EXTS))):
             if not link_text:
                 filename = os.path.basename(absolute_url)
                 link_text = os.path.splitext(filename)[0]
-            file_type = 'document' if any(absolute_url.lower().endswith(tuple(DOCUMENT_EXTS)) else 'image'
+            file_type = 'document' if any(absolute_url.lower().endswith(tuple(DOCUMENT_EXTS))) else 'image'
             files.append({
                 'name': link_text,
                 'url': absolute_url,
@@ -150,7 +150,7 @@ def extract_files(html_content, base_url):
         absolute_url = urljoin(base_url, src)
         alt_text = img.get('alt', '').strip()
 
-        if any(absolute_url.lower().endswith(tuple(IMAGE_EXTS)):
+        if any(absolute_url.lower().endswith(tuple(IMAGE_EXTS))):
             name = alt_text or os.path.splitext(os.path.basename(absolute_url))[0]
             files.append({
                 'name': name,
@@ -526,6 +526,8 @@ async def remove_sudo_user(client, message):
         logger.error(f"Error in remove_sudo_user: {e}")
         await message.reply_text("❌ An error occurred while processing the command.")
 
+import asyncio
+
 def main():
     app = Client(
         "my_bot",
@@ -552,12 +554,20 @@ def main():
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_website_updates, 'interval', minutes=CHECK_INTERVAL, args=[app])
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(async_main(app, scheduler))
+
+async def async_main(app, scheduler):
     scheduler.start()
 
     try:
-        app.run()
+        await app.start()
+        await idle()
+        await app.stop()
     except Exception as e:
         logger.error(f"Bot startup failed: {e}")
 
 if __name__ == '__main__':
     main()
+
