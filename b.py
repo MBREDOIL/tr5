@@ -527,6 +527,50 @@ async def remove_sudo_user(client, message):
         await message.reply_text("❌ An error occurred while processing the command.")
 
 import asyncio
+from pyrogram import idle
+
+def main():
+    app = Client(
+        "my_bot",
+        api_id=os.getenv("API_ID"),
+        api_hash=os.getenv("API_HASH"),
+        bot_token=os.getenv("BOT_TOKEN")
+    )
+
+    handlers = [
+        MessageHandler(start, filters.command("start")),
+        MessageHandler(track, filters.command("track")),
+        MessageHandler(untrack, filters.command("untrack")),
+        MessageHandler(list_urls, filters.command("list")),
+        MessageHandler(list_documents, filters.command("documents")),
+        MessageHandler(add_channel, filters.command("addchannel") & filters.private),
+        MessageHandler(remove_channel, filters.command("removechannel") & filters.private),
+        MessageHandler(add_sudo_user, filters.command("addsudo") & filters.private),
+        MessageHandler(remove_sudo_user, filters.command("removesudo") & filters.private)
+             # Add other handlers
+    ]
+
+    for handler in handlers:
+        app.add_handler(handler)
+
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(check_website_updates, 'interval', minutes=CHECK_INTERVAL, args=[app])
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(async_main(app, scheduler))
+
+async def async_main(app, scheduler):
+    scheduler.start()
+
+    try:
+        await app.start()
+        await idle()
+        await app.stop()
+    except Exception as e:
+        logger.error(f"Bot startup failed: {e}")
+
+if __name__ == '__main__':
+    main()
 
 def main():
     app = Client(
