@@ -167,7 +167,7 @@ async def create_document_file(url, files):
 
     with open(filename, 'w', encoding='utf-8') as f:
         for file in files:
-            f.write(f"{file['type'].upper()}: {file['name']}\n{file['url']}\n\n")
+            f.write(f"{file['type'].upper()}: {file['name']} {file['url']}\n\n")
     
     if os.path.getsize(filename) > MAX_FILE_SIZE:
         os.remove(filename)
@@ -401,6 +401,131 @@ async def list_documents(client, message):
 
 # Add other management commands (addchannel, removesudo etc.) as needed
 
+
+async def add_channel(client, message):
+    """Handle /addchannel command (owner only)"""
+    try:
+        if message.from_user.id != OWNER_ID:
+            await message.reply_text("❌ Only the owner can add authorized channels.")
+            return
+
+        if len(message.command) < 2:
+            await message.reply_text("⚠️ Usage: /addchannel <channel_id>")
+            return
+
+        try:
+            channel_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ Invalid channel ID. Must be an integer.")
+            return
+
+        authorized_channels = load_channels()
+
+        if channel_id in authorized_channels:
+            await message.reply_text("❌ This channel is already authorized.")
+            return
+
+        authorized_channels.append(channel_id)
+        save_channels(authorized_channels)
+        await message.reply_text(f"✅ Channel {channel_id} has been authorized.")
+
+    except Exception as e:
+        logger.error(f"Error in add_channel: {e}")
+        await message.reply_text("❌ An error occurred while processing the command.")
+
+async def remove_channel(client, message):
+    """Handle /removechannel command (owner only)"""
+    try:
+        if message.from_user.id != OWNER_ID:
+            await message.reply_text("❌ Only the owner can remove authorized channels.")
+            return
+
+        if len(message.command) < 2:
+            await message.reply_text("⚠️ Usage: /removechannel <channel_id>")
+            return
+
+        try:
+            channel_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ Invalid channel ID. Must be an integer.")
+            return
+
+        authorized_channels = load_channels()
+
+        if channel_id not in authorized_channels:
+            await message.reply_text("❌ This channel is not authorized.")
+            return
+
+        authorized_channels.remove(channel_id)
+        save_channels(authorized_channels)
+        await message.reply_text(f"❎ Channel {channel_id} has been removed from authorized channels.")
+
+    except Exception as e:
+        logger.error(f"Error in remove_channel: {e}")
+        await message.reply_text("❌ An error occurred while processing the command.")
+
+async def add_sudo_user(client, message):
+    """Handle /addsudo command (owner only)"""
+    try:
+        if message.from_user.id != OWNER_ID:
+            await message.reply_text("❌ Only the owner can add sudo users.")
+            return
+
+        if len(message.command) < 2:
+            await message.reply_text("⚠️ Usage: /addsudo <user_id>")
+            return
+
+        try:
+            sudo_user_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ Invalid user ID. Must be an integer.")
+            return
+
+        sudo_users = load_sudo_users()
+
+        if sudo_user_id in sudo_users:
+            await message.reply_text("❌ This user is already a sudo user.")
+            return
+
+        sudo_users.append(sudo_user_id)
+        save_sudo_users(sudo_users)
+        await message.reply_text(f"✅ User {sudo_user_id} has been added as a sudo user.")
+
+    except Exception as e:
+        logger.error(f"Error in add_sudo_user: {e}")
+        await message.reply_text("❌ An error occurred while processing the command.")
+
+async def remove_sudo_user(client, message):
+    """Handle /removesudo command (owner only)"""
+    try:
+        if message.from_user.id != OWNER_ID:
+            await message.reply_text("❌ Only the owner can remove sudo users.")
+            return
+
+        if len(message.command) < 2:
+            await message.reply_text("⚠️ Usage: /removesudo <user_id>")
+            return
+
+        try:
+            sudo_user_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ Invalid user ID. Must be an integer.")
+            return
+
+        sudo_users = load_sudo_users()
+
+        if sudo_user_id not in sudo_users:
+            await message.reply_text("❌ This user is not a sudo user.")
+            return
+
+        sudo_users.remove(sudo_user_id)
+        save_sudo_users(sudo_users)
+        await message.reply_text(f"❎ User {sudo_user_id} has been removed from sudo users.")
+
+    except Exception as e:
+        logger.error(f"Error in remove_sudo_user: {e}")
+        await message.reply_text("❌ An error occurred while processing the command.")
+
 def main():
     app = Client(
         "my_bot",
@@ -415,7 +540,11 @@ def main():
         MessageHandler(untrack, filters.command("untrack")),
         MessageHandler(list_urls, filters.command("list")),
         MessageHandler(list_documents, filters.command("documents")),
-        # Add other handlers
+        MessageHandler(add_channel, filters.command("addchannel") & filters.private),
+        MessageHandler(remove_channel, filters.command("removechannel") & filters.private),
+        MessageHandler(add_sudo_user, filters.command("addsudo") & filters.private),
+        MessageHandler(remove_sudo_user, filters.command("removesudo") & filters.private)
+             # Add other handlers
     ]
 
     for handler in handlers:
