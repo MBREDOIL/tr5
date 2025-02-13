@@ -8,6 +8,7 @@ import os
 import requests
 from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler
+from pyrogram.enums import ChatType
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
@@ -133,11 +134,11 @@ def extract_files(html_content, base_url):
         absolute_url = urljoin(base_url, encoded_href)
         link_text = link.text.strip()
 
-        if any(absolute_url.lower().endswith(tuple(ALLOWED_EXTS))):
+        if any(absolute_url.lower().endswith(tuple(ALLOWED_EXTS)):
             if not link_text:
                 filename = os.path.basename(absolute_url)
                 link_text = os.path.splitext(filename)[0]
-            file_type = 'document' if any(absolute_url.lower().endswith(tuple(DOCUMENT_EXTS))) else 'image'
+            file_type = 'document' if any(absolute_url.lower().endswith(tuple(DOCUMENT_EXTS)) else 'image'
             files.append({
                 'name': link_text,
                 'url': absolute_url,
@@ -150,7 +151,7 @@ def extract_files(html_content, base_url):
         absolute_url = urljoin(base_url, src)
         alt_text = img.get('alt', '').strip()
 
-        if any(absolute_url.lower().endswith(tuple(IMAGE_EXTS))):
+        if any(absolute_url.lower().endswith(tuple(IMAGE_EXTS)):
             name = alt_text or os.path.splitext(os.path.basename(absolute_url))[0]
             files.append({
                 'name': name,
@@ -167,7 +168,7 @@ async def create_document_file(url, files):
 
     with open(filename, 'w', encoding='utf-8') as f:
         for file in files:
-            f.write(f"{file['type'].upper()}: {file['name']} {file['url']}\n\n")
+            f.write(f"{file['type'].upper()}: {file['name']}\n{file['url']}\n\n")
     
     if os.path.getsize(filename) > MAX_FILE_SIZE:
         os.remove(filename)
@@ -245,13 +246,15 @@ async def check_website_updates(client):
                     save_user_data(user_data)
 
 async def start(client, message):
-    if message.chat.type == "private":
+    logger.info(f"Received start command from chat_type: {message.chat.type}, user_id: {message.from_user.id if message.from_user else None}, chat_id: {message.chat.id}")
+    
+    if message.chat.type == ChatType.PRIVATE:
         if not is_authorized_user(message.from_user.id):
-            await message.reply_text("❌ Unauthorized access.")
+            await message.reply_text("❌ You are not authorized to use this bot.")
             return
-    elif message.chat.type == "channel":
+    elif message.chat.type == ChatType.CHANNEL:
         if not is_authorized_channel(message.chat.id):
-            await message.reply_text("❌ Unauthorized channel.")
+            await message.reply_text("❌ This channel is not authorized.")
             return
     else:
         await message.reply_text("❌ Command not allowed here.")
@@ -268,20 +271,20 @@ async def start(client, message):
     )
 
 async def track(client, message):
-    # Authorization check
-    if message.chat.type == "private":
-        if not is_authorized_user(message.from_user.id):
-            await message.reply_text("❌ Unauthorized.")
-            return
-    elif message.chat.type == "channel":
-        if not is_authorized_channel(message.chat.id):
-            await message.reply_text("❌ Unauthorized channel.")
-            return
-    else:
+    if message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
         await message.reply_text("❌ Command not allowed here.")
         return
 
-    user_id = str(message.from_user.id or message.chat.id)
+    if message.chat.type == ChatType.PRIVATE:
+        if not is_authorized_user(message.from_user.id):
+            await message.reply_text("❌ Unauthorized access.")
+            return
+    else:
+        if not is_authorized_channel(message.chat.id):
+            await message.reply_text("❌ Unauthorized channel.")
+            return
+
+    user_id = str(message.chat.id)
     url = ' '.join(message.command[1:]).strip()
 
     if not url.startswith(('http://', 'https://')):
@@ -331,82 +334,10 @@ async def track(client, message):
 
     await message.reply_text(f"✅ Tracking started: {url}\nFiles found: {len(current_files)}")
 
-async def untrack(client, message):
-    # Authorization check similar to track function
-    
-    user_id = str(message.from_user.id or message.chat.id)
-    url = ' '.join(message.command[1:]).strip()
-
-    user_data = load_user_data()
-    if user_id not in user_data:
-        await message.reply_text("❌ No tracked URLs.")
-        return
-
-    original_count = len(user_data[user_id]['tracked_urls'])
-    user_data[user_id]['tracked_urls'] = [
-        u for u in user_data[user_id]['tracked_urls']
-        if u['url'] != url
-    ]
-
-    if len(user_data[user_id]['tracked_urls']) < original_count:
-        save_user_data(user_data)
-        await message.reply_text(f"✅ Stopped tracking: {url}")
-    else:
-        await message.reply_text("❌ URL not found")
-
-async def list_urls(client, message):
-    # Authorization check
-    
-    user_id = str(message.from_user.id or message.chat.id)
-    user_data = load_user_data()
-
-    if user_id not in user_data or not user_data[user_id]['tracked_urls']:
-        await message.reply_text("📭 No tracked URLs")
-        return
-
-    urls = "\n".join([u['url'] for u in user_data[user_id]['tracked_urls']])
-    await message.reply_text(f"📜 Tracked URLs:\n\n{urls}")
-
-async def list_documents(client, message):
-    # Authorization check
-    
-    user_id = str(message.from_user.id or message.chat.id)
-    url = ' '.join(message.command[1:]).strip()
-
-    user_data = load_user_data()
-    if user_id not in user_data or not user_data[user_id]['tracked_urls']:
-        await message.reply_text("❌ No tracked URLs")
-        return
-
-    url_info = next((u for u in user_data[user_id]['tracked_urls'] if u['url'] == url), None)
-    if not url_info:
-        await message.reply_text("❌ URL not tracked")
-        return
-
-    files = url_info.get('files', [])
-    if not files:
-        await message.reply_text(f"ℹ️ No files found at {url}")
-    else:
-        try:
-            txt_file = await create_document_file(url, files)
-            await client.send_document(
-                chat_id=user_id,
-                document=txt_file,
-                caption=f"📑 Files at {url} ({len(files)})"
-            )
-            os.remove(txt_file)
-        except Exception as e:
-            logger.error(f"Document list error: {e}")
-            await message.reply_text("❌ Error sending file list")
-
-# Add other management commands (addchannel, removesudo etc.) as needed
-
-
 async def add_channel(client, message):
-    """Handle /addchannel command (owner only)"""
     try:
         if message.from_user.id != OWNER_ID:
-            await message.reply_text("❌ Only the owner can add authorized channels.")
+            await message.reply_text("❌ Only owner can add channels.")
             return
 
         if len(message.command) < 2:
@@ -416,28 +347,27 @@ async def add_channel(client, message):
         try:
             channel_id = int(message.command[1])
         except ValueError:
-            await message.reply_text("❌ Invalid channel ID. Must be an integer.")
+            await message.reply_text("❌ Invalid channel ID.")
             return
 
         authorized_channels = load_channels()
 
         if channel_id in authorized_channels:
-            await message.reply_text("❌ This channel is already authorized.")
+            await message.reply_text("✅ Channel already authorized.")
             return
 
         authorized_channels.append(channel_id)
         save_channels(authorized_channels)
-        await message.reply_text(f"✅ Channel {channel_id} has been authorized.")
+        await message.reply_text(f"✅ Channel {channel_id} authorized.")
 
     except Exception as e:
-        logger.error(f"Error in add_channel: {e}")
-        await message.reply_text("❌ An error occurred while processing the command.")
+        logger.error(f"Add channel error: {e}")
+        await message.reply_text("❌ Failed to add channel.")
 
 async def remove_channel(client, message):
-    """Handle /removechannel command (owner only)"""
     try:
         if message.from_user.id != OWNER_ID:
-            await message.reply_text("❌ Only the owner can remove authorized channels.")
+            await message.reply_text("❌ Only owner can remove channels.")
             return
 
         if len(message.command) < 2:
@@ -447,28 +377,27 @@ async def remove_channel(client, message):
         try:
             channel_id = int(message.command[1])
         except ValueError:
-            await message.reply_text("❌ Invalid channel ID. Must be an integer.")
+            await message.reply_text("❌ Invalid channel ID.")
             return
 
         authorized_channels = load_channels()
 
         if channel_id not in authorized_channels:
-            await message.reply_text("❌ This channel is not authorized.")
+            await message.reply_text("❌ Channel not in list.")
             return
 
         authorized_channels.remove(channel_id)
         save_channels(authorized_channels)
-        await message.reply_text(f"❎ Channel {channel_id} has been removed from authorized channels.")
+        await message.reply_text(f"✅ Channel {channel_id} removed.")
 
     except Exception as e:
-        logger.error(f"Error in remove_channel: {e}")
-        await message.reply_text("❌ An error occurred while processing the command.")
+        logger.error(f"Remove channel error: {e}")
+        await message.reply_text("❌ Failed to remove channel.")
 
 async def add_sudo_user(client, message):
-    """Handle /addsudo command (owner only)"""
     try:
         if message.from_user.id != OWNER_ID:
-            await message.reply_text("❌ Only the owner can add sudo users.")
+            await message.reply_text("❌ Only owner can add sudo users.")
             return
 
         if len(message.command) < 2:
@@ -476,30 +405,29 @@ async def add_sudo_user(client, message):
             return
 
         try:
-            sudo_user_id = int(message.command[1])
+            user_id = int(message.command[1])
         except ValueError:
-            await message.reply_text("❌ Invalid user ID. Must be an integer.")
+            await message.reply_text("❌ Invalid user ID.")
             return
 
         sudo_users = load_sudo_users()
 
-        if sudo_user_id in sudo_users:
-            await message.reply_text("❌ This user is already a sudo user.")
+        if user_id in sudo_users:
+            await message.reply_text("✅ User already sudo.")
             return
 
-        sudo_users.append(sudo_user_id)
+        sudo_users.append(user_id)
         save_sudo_users(sudo_users)
-        await message.reply_text(f"✅ User {sudo_user_id} has been added as a sudo user.")
+        await message.reply_text(f"✅ User {user_id} added to sudo.")
 
     except Exception as e:
-        logger.error(f"Error in add_sudo_user: {e}")
-        await message.reply_text("❌ An error occurred while processing the command.")
+        logger.error(f"Add sudo error: {e}")
+        await message.reply_text("❌ Failed to add sudo user.")
 
 async def remove_sudo_user(client, message):
-    """Handle /removesudo command (owner only)"""
     try:
         if message.from_user.id != OWNER_ID:
-            await message.reply_text("❌ Only the owner can remove sudo users.")
+            await message.reply_text("❌ Only owner can remove sudo users.")
             return
 
         if len(message.command) < 2:
@@ -507,27 +435,24 @@ async def remove_sudo_user(client, message):
             return
 
         try:
-            sudo_user_id = int(message.command[1])
+            user_id = int(message.command[1])
         except ValueError:
-            await message.reply_text("❌ Invalid user ID. Must be an integer.")
+            await message.reply_text("❌ Invalid user ID.")
             return
 
         sudo_users = load_sudo_users()
 
-        if sudo_user_id not in sudo_users:
-            await message.reply_text("❌ This user is not a sudo user.")
+        if user_id not in sudo_users:
+            await message.reply_text("❌ User not in sudo list.")
             return
 
-        sudo_users.remove(sudo_user_id)
+        sudo_users.remove(user_id)
         save_sudo_users(sudo_users)
-        await message.reply_text(f"❎ User {sudo_user_id} has been removed from sudo users.")
+        await message.reply_text(f"✅ User {user_id} removed from sudo.")
 
     except Exception as e:
-        logger.error(f"Error in remove_sudo_user: {e}")
-        await message.reply_text("❌ An error occurred while processing the command.")
-
-import asyncio
-from pyrogram import idle
+        logger.error(f"Remove sudo error: {e}")
+        await message.reply_text("❌ Failed to remove sudo user.")
 
 def main():
     app = Client(
@@ -547,7 +472,6 @@ def main():
         MessageHandler(remove_channel, filters.command("removechannel") & filters.private),
         MessageHandler(add_sudo_user, filters.command("addsudo") & filters.private),
         MessageHandler(remove_sudo_user, filters.command("removesudo") & filters.private)
-             # Add other handlers
     ]
 
     for handler in handlers:
@@ -555,63 +479,12 @@ def main():
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_website_updates, 'interval', minutes=CHECK_INTERVAL, args=[app])
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_main(app, scheduler))
-
-async def async_main(app, scheduler):
     scheduler.start()
 
     try:
-        await app.start()
-        await idle()
-        await app.stop()
+        app.run()
     except Exception as e:
         logger.error(f"Bot startup failed: {e}")
 
 if __name__ == '__main__':
     main()
-
-def main():
-    app = Client(
-        "my_bot",
-        api_id=os.getenv("API_ID"),
-        api_hash=os.getenv("API_HASH"),
-        bot_token=os.getenv("BOT_TOKEN")
-    )
-
-    handlers = [
-        MessageHandler(start, filters.command("start")),
-        MessageHandler(track, filters.command("track")),
-        MessageHandler(untrack, filters.command("untrack")),
-        MessageHandler(list_urls, filters.command("list")),
-        MessageHandler(list_documents, filters.command("documents")),
-        MessageHandler(add_channel, filters.command("addchannel") & filters.private),
-        MessageHandler(remove_channel, filters.command("removechannel") & filters.private),
-        MessageHandler(add_sudo_user, filters.command("addsudo") & filters.private),
-        MessageHandler(remove_sudo_user, filters.command("removesudo") & filters.private)
-             # Add other handlers
-    ]
-
-    for handler in handlers:
-        app.add_handler(handler)
-
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(check_website_updates, 'interval', minutes=CHECK_INTERVAL, args=[app])
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_main(app, scheduler))
-
-async def async_main(app, scheduler):
-    scheduler.start()
-
-    try:
-        await app.start()
-        await idle()
-        await app.stop()
-    except Exception as e:
-        logger.error(f"Bot startup failed: {e}")
-
-if __name__ == '__main__':
-    main()
-
